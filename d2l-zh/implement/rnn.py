@@ -1,7 +1,12 @@
 import torch
 import collections
 import re
+import math
+from torch import nn
+from torch.nn import functional as F
 
+
+# ***********************数据预处理************************************
 time_machine = "/home/peihuanni/d2l/d2l-zh/pytorch/data/timemachine.txt"
 
 def read_time_machine():
@@ -32,18 +37,46 @@ class Vocab:
             tokens = []
         if reserved_tokens is None:
             reserved_tokens = []
+        # 返回一个统计tokens频率的字典，输出形如输出: Counter({'banana': 2, 'apple': 3, 'orange': 1})
         _, counter = count_corpus(tokens)
-        self._token_freqs = sorted(counter.items(), key=get_second_element, reserve=True)
+        # sorted函数返回一个按频率降序序排列的tokens列表
+        self._token_freqs = sorted(counter.items(), key=get_second_element, reverse=True)
+        self.idx_to_token = ['unk'] + reserved_tokens
+        self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
+        self.unk = 0
+        for token, freq in self._token_freqs:
+            if freq < min_freq:
+                break
+            elif token not in self.token_to_idx:
+                self.idx_to_token.append(token)
+                # 列表，按频率存token，达成idx_to_token的效果，每append一次，len(idx_to_token)加一
+                self.token_to_idx[token] = len(self.idx_to_token)-1
+                # 字典，key为token，value为从零开始的idx
 
+    def __len__(self):
+        return len(self.idx_to_token)
+    
+    # 这个函数可以获得这个token的索引
+    def __getitem__(self, tokens):
+        if not isinstance(tokens, (list, tuple)):
+            return self.token_to_idx.get(tokens, self.unk)
+        return [self.__getitem__(token) for token in tokens]
+    
+    def to_tokens(self, indices):
+        if not isinstance(indices, (list, tuple)):
+            return self.idx_to_token[indices]
+        return [self.idx_to_token[index] for index in indices]
 
 
 lines = read_time_machine()
 tokens_char = tokenize(lines, token='word')
 tokens_1D, count = count_corpus(tokens_char)
-# 注意这里，虽然在这个函数中对tokens作了修改
-# 但事实上，token_char（实参）是传入给了tokens（型参）
-# 在函数里面对型参的操作，并不会影响实参
-# 可以运行：
-# print(tokens_char)
-# print(tokens_1D)
-#  二者结果截然不同
+vocab = Vocab(tokens_1D)
+
+for i in [1,10]:
+    print('text', tokens_char[i])
+    print('index', vocab[tokens_char[i]])
+
+
+# **************************RNN搭建*********************************
+batch_size, num_steps = 32, 35
